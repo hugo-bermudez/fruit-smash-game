@@ -8,6 +8,7 @@ const GAME_DURATION = 60;
 const CATCH_RATIO   = 0.06;
 const EMOJI_RATIO   = 0.14;
 const TRAIL_LEN     = 10;
+const MAX_PARTICLES = 150;
 
 const ALIENS  = ['👾'];
 const BADS    = ['💣', '🧨', '🦠'];
@@ -62,11 +63,15 @@ function setup() {
   computeVR();
   sizing();
 
-  video = createCapture(VIDEO);
-  video.size(640, 480);
-  video.hide();
-
-  handPose.detectStart(video, r => { detectedHands = r; });
+  navigator.mediaDevices.getUserMedia({ video: true }).then(function(stream) {
+    stream.getTracks().forEach(t => t.stop());
+    video = createCapture(VIDEO);
+    video.size(640, 480);
+    video.hide();
+    handPose.detectStart(video, r => { detectedHands = r; });
+  }).catch(function() {
+    gameState = 'error';
+  });
 
   textAlign(CENTER, CENTER);
   lastTime = millis();
@@ -85,7 +90,10 @@ function setup() {
 
   gameState = 'start';
   let loader = document.getElementById('loader');
-  if (loader) loader.classList.add('hidden');
+  if (loader) {
+    loader.classList.add('hidden');
+    loader.addEventListener('transitionend', () => loader.remove());
+  }
 }
 
 function windowResized() {
@@ -143,6 +151,7 @@ function draw() {
       drawParticles();
       drawGameOver();
       break;
+    case 'error': drawError(); break;
   }
 
   drawHands();
@@ -197,6 +206,7 @@ function drawSpaceBg() {
 
 // ── Video area (4:3 centered, mirrored) ─────
 function drawVideoArea() {
+  if (!video) return;
   push();
   translate(vr.x + vr.w, vr.y);
   scale(-1, 1);
@@ -408,7 +418,9 @@ function drawEmojis() {
 
 // ── Particles ───────────────────────────────
 function burstParticles(x, y, col, pts) {
+  if (particles.length >= MAX_PARTICLES) return;
   let count = pts > 0 ? 30 : 14;
+  count = min(count, MAX_PARTICLES - particles.length - 2);
 
   for (let i = 0; i < count; i++) {
     let a = random(TWO_PI), s = random(2.5, 10);
@@ -477,7 +489,10 @@ function tick(dt) {
   if (timeLeft <= 0) {
     timeLeft = 0;
     gameState = 'gameover';
-    if (score > highScore) highScore = score;
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem('alienZapHigh', highScore);
+    }
     return;
   }
 
@@ -563,6 +578,24 @@ function drawLoading() {
   fill(C_PURPLE[0], C_PURPLE[1], C_PURPLE[2]);
   let d = '.'.repeat(floor(frameCount / 20) % 4);
   text('Loading hand tracking' + d, vr.x + vr.w / 2, vr.y + vr.h / 2);
+  pop();
+}
+
+function drawError() {
+  fill(C_BG2[0], C_BG2[1], C_BG2[2], 220);
+  noStroke();
+  rect(vr.x, vr.y, vr.w, vr.h);
+  push(); textFont('Outfit'); textAlign(CENTER, CENTER);
+  let cx = vr.x + vr.w / 2;
+  let cy = vr.y + vr.h / 2;
+  textSize(min(48, vr.w * 0.07));
+  fill(C_RED[0], C_RED[1], C_RED[2]);
+  textStyle(BOLD);
+  text('📷 Camera Required', cx, cy - 30);
+  textSize(min(17, vr.w * 0.028));
+  textStyle(NORMAL);
+  fill(190, 200, 220);
+  text('Please allow camera access and reload.', cx, cy + 20);
   pop();
 }
 
@@ -702,11 +735,20 @@ function drawGameOver() {
 }
 
 // ── Input ───────────────────────────────────
-function mousePressed()  { handleStart(); }
-function touchStarted()  { handleStart(); return false; }
+function mousePressed()  { handleStart(mouseX, mouseY); }
+function touchStarted()  { handleStart(touches[0]?.x ?? mouseX, touches[0]?.y ?? mouseY); return false; }
 
-function handleStart() {
-  if (gameState === 'start' || gameState === 'gameover') {
+function isInsideButton(px, py) {
+  let cx = vr.x + vr.w / 2;
+  let cy = vr.y + vr.h / 2;
+  let by = cy + vr.h * (gameState === 'gameover' ? 0.32 : 0.3);
+  let bw = min(280, vr.w * 0.38);
+  let bh = 56;
+  return px > cx - bw / 2 && px < cx + bw / 2 && py > by - bh / 2 && py < by + bh / 2;
+}
+
+function handleStart(px, py) {
+  if ((gameState === 'start' || gameState === 'gameover') && isInsideButton(px, py)) {
     gameState    = 'playing';
     score        = 0;
     displayScore = 0;
