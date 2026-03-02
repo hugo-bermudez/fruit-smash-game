@@ -29,9 +29,11 @@ const C_PURPLE = [180, 100, 255];
 // ── State ───────────────────────────────────
 let video, handPose, detectedHands = [];
 let emojis = [], particles = [], bgStars = [];
+let bgBuffer = null;
 
 let score = 0, displayScore = 0;
-let combo = 0, bestCombo = 0, highScore = 0;
+let combo = 0, bestCombo = 0;
+let highScore = parseInt(localStorage.getItem('alienZapHigh')) || 0;
 
 let gameState   = 'loading';
 let timeLeft    = GAME_DURATION;
@@ -90,6 +92,7 @@ function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   computeVR();
   sizing();
+  buildBgBuffer();
 }
 
 function computeVR() {
@@ -157,17 +160,24 @@ function draw() {
 }
 
 // ── Space background ────────────────────────
-function drawSpaceBg() {
-  noStroke();
+function buildBgBuffer() {
+  if (bgBuffer) bgBuffer.remove();
+  bgBuffer = createGraphics(width, height);
+  bgBuffer.noStroke();
   for (let y = 0; y < height; y += 3) {
     let t = y / height;
-    fill(
+    bgBuffer.fill(
       lerp(C_BG1[0], C_BG2[0], t),
       lerp(C_BG1[1], C_BG2[1], t),
       lerp(C_BG1[2], C_BG2[2], t)
     );
-    rect(0, y, width, 3);
+    bgBuffer.rect(0, y, width, 3);
   }
+}
+
+function drawSpaceBg() {
+  if (!bgBuffer) buildBgBuffer();
+  image(bgBuffer, 0, 0);
 
   noStroke();
   for (let s of bgStars) {
