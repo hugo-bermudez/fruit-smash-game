@@ -384,6 +384,8 @@ function drawEmojis() {
       else                         ctx.shadowColor = `rgba(${C_RED[0]},${C_RED[1]},${C_RED[2]},0.9)`;
     }
 
+    noStroke();
+    fill(255);
     textFont('sans-serif');
     textSize(e.size * e.scale);
     text(e.emoji, 0, 0);
