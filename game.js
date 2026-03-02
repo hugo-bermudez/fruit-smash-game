@@ -1,12 +1,12 @@
 // ─────────────────────────────────────────────
 //  FRUIT SMASH – Body Movement Mini-Game
-//  Uses p5.js + ml5.js BodyPose (MoveNet)
+//  Uses p5.js + ml5.js HandPose
 // ─────────────────────────────────────────────
 
 // ── Configuration ───────────────────────────
 const GAME_DURATION    = 60;
 const CATCH_RATIO      = 0.055;
-const EMOJI_RATIO      = 0.05;
+const EMOJI_RATIO      = 0.13;
 const TRAIL_LEN        = 10;
 const FRUIT_CHANCE     = 0.72;
 
@@ -16,7 +16,7 @@ const FRUITS = [
 const BADS = ['💣','💀','🧨','👾','🦠'];
 
 // ── State ───────────────────────────────────
-let video, bodyPose, poses = [];
+let video, handPose, detectedHands = [];
 let emojis     = [];
 let particles  = [];
 let bgStars    = [];
@@ -42,7 +42,7 @@ let hands = [
 
 // ── p5 lifecycle ────────────────────────────
 function preload() {
-  bodyPose = ml5.bodyPose('MoveNet', { flipped: true });
+  handPose = ml5.handPose({ flipped: true });
 }
 
 function setup() {
@@ -53,7 +53,7 @@ function setup() {
   video.size(640, 480);
   video.hide();
 
-  bodyPose.detectStart(video, r => { poses = r; });
+  handPose.detectStart(video, r => { detectedHands = r; });
 
   textAlign(CENTER, CENTER);
   lastTime = millis();
@@ -158,25 +158,27 @@ function vignette() {
   ctx.fillRect(0, 0, width, height);
 }
 
-// ── Hand tracking ───────────────────────────
+// ── Hand tracking (index finger tips) ───────
 function updateHands() {
-  if (poses.length > 0) {
-    let kps = poses[0].keypoints;
-    let sx = width / 640, sy = height / 480;
-    for (let i = 0; i < 2; i++) {
-      let kp = kps[9 + i];
-      if (kp && kp.confidence > 0.2) {
-        hands[i].x  = kp.x * sx;
-        hands[i].y  = kp.y * sy;
-        hands[i].on = true;
-      } else {
-        hands[i].on = false;
-      }
+  // Reset both hands, then fill from detected results
+  hands[0].on = false;
+  hands[1].on = false;
+
+  let sx = width / 640, sy = height / 480;
+  for (let i = 0; i < min(detectedHands.length, 2); i++) {
+    let hand = detectedHands[i];
+    // keypoint 8 = index_finger_tip
+    let tip = hand.keypoints[8];
+    if (tip && (tip.confidence === undefined || tip.confidence > 0.2)) {
+      hands[i].x  = tip.x * sx;
+      hands[i].y  = tip.y * sy;
+      hands[i].on = true;
     }
   }
+
   for (let h of hands) {
-    h.sx = lerp(h.sx, h.x, 0.38);
-    h.sy = lerp(h.sy, h.y, 0.38);
+    h.sx = lerp(h.sx, h.x, 0.42);
+    h.sy = lerp(h.sy, h.y, 0.42);
     if (h.on) {
       h.trail.push({ x: h.sx, y: h.sy });
       if (h.trail.length > TRAIL_LEN) h.trail.shift();
@@ -216,14 +218,14 @@ function drawHands() {
 
     // core
     let ctx = drawingContext;
-    ctx.shadowBlur  = 28;
-    ctx.shadowColor = 'rgba(0,255,200,0.7)';
-    noStroke(); fill(0, 255, 210, 210);
-    circle(h.sx, h.sy, 24);
+    ctx.shadowBlur  = 24;
+    ctx.shadowColor = 'rgba(0,255,200,0.75)';
+    noStroke(); fill(0, 255, 210, 220);
+    circle(h.sx, h.sy, 18);
     ctx.shadowBlur = 0;
 
-    fill(255, 255, 255, 240);
-    circle(h.sx, h.sy, 9);
+    fill(255, 255, 255, 245);
+    circle(h.sx, h.sy, 7);
   }
 }
 
@@ -462,7 +464,7 @@ function drawLoading() {
   push(); textFont('Outfit'); textAlign(CENTER, CENTER);
   textSize(min(26, width * 0.035)); fill(0, 255, 200);
   let d = '.'.repeat(floor(frameCount / 20) % 4);
-  text('Loading pose model' + d, width / 2, height / 2);
+  text('Loading hand tracking model' + d, width / 2, height / 2);
   pop();
 }
 
@@ -497,7 +499,7 @@ function drawStart() {
   // instructions
   textSize(min(18, width * 0.024)); textStyle(NORMAL);
   fill(180, 200, 220);
-  text('Move your hands to catch the falling fruits!', width / 2, cy + 65);
+  text('Point your fingers to catch the falling fruits!', width / 2, cy + 65);
   fill(160, 175, 195);
   text('Avoid the bombs 💣 — they cost you points', width / 2, cy + 95);
 
