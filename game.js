@@ -190,13 +190,13 @@ function drawVideoArea() {
   push();
   translate(vr.x + vr.w, vr.y);
   scale(-1, 1);
-  tint(255, 190);
+  tint(255, 220);
   image(video, 0, 0, vr.w, vr.h);
   noTint();
   pop();
 
   noStroke();
-  fill(C_BG2[0], C_BG2[1], C_BG2[2], 90);
+  fill(C_BG2[0], C_BG2[1], C_BG2[2], 60);
   rect(vr.x, vr.y, vr.w, vr.h);
 }
 
@@ -298,12 +298,12 @@ function spawnEmoji() {
   }
 
   let sz = emojiSize * random(0.9, 1.2);
-  let m  = height / 800;
+  let m  = vr.h / 800;
 
   emojis.push({
     emoji, type,
-    x: random(sz + 20, width - sz - 20),
-    y: height + sz,
+    x: random(vr.x + sz + 20, vr.x + vr.w - sz - 20),
+    y: vr.y + vr.h + sz,
     spd: random(2.0, 4.5) * m,
     wPhase: random(TWO_PI),
     wFreq:  random(0.012, 0.032),
@@ -328,7 +328,7 @@ function updateEmojis() {
     e.y   -= e.spd;
     e.x   += sin(frameCount * e.wFreq + e.wPhase) * e.wAmp * 0.013;
     e.rot += e.rotSpd;
-    e.x    = constrain(e.x, e.size * 0.5, width - e.size * 0.5);
+    e.x    = constrain(e.x, vr.x + e.size * 0.5, vr.x + vr.w - e.size * 0.5);
 
     for (let h of hands) {
       if (!h.on) continue;
@@ -355,7 +355,7 @@ function updateEmojis() {
       }
     }
 
-    if (e.y < -e.size - 10) {
+    if (e.y < vr.y - e.size - 10) {
       if (e.type === 'alien') combo = 0;
       emojis.splice(i, 1);
     }
