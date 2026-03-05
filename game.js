@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────
-//  ALIEN ZAP ⚡ – Body Movement Mini-Game
-//  Uses p5.js + ml5.js HandPose
+//  NUMBER ZAP – Body Movement Mini-Game
+//  Uses p5.js + ml5.js FaceMesh (nose tracking)
 // ─────────────────────────────────────────────
 
 // ── Configuration ───────────────────────────
@@ -10,9 +10,9 @@ const EMOJI_RATIO   = 0.14;
 const TRAIL_LEN     = 10;
 const MAX_PARTICLES = 150;
 
-const ALIENS  = ['👾'];
+const ALIENS  = ['6'];
 const BADS    = ['💣', '🧨', '🦠'];
-const BONUSES = ['⚡'];
+const BONUSES = ['7'];
 
 const ALIEN_RATE = 0.58;
 const BAD_RATE   = 0.27;
@@ -28,7 +28,7 @@ const C_RED    = [255, 60, 70];
 const C_PURPLE = [180, 100, 255];
 
 // ── State ───────────────────────────────────
-let video, handPose, detectedHands = [];
+let video, faceMesh, detectedFaces = [];
 let emojis = [], particles = [], bgStars = [];
 let bgBuffer = null;
 
@@ -48,14 +48,11 @@ let catchRadius, emojiSize;
 // 4:3 video rect (centered)
 let vr = { x: 0, y: 0, w: 640, h: 480 };
 
-let hands = [
-  { x: -200, y: -200, sx: -200, sy: -200, trail: [], on: false },
-  { x: -200, y: -200, sx: -200, sy: -200, trail: [], on: false }
-];
+let nose = { x: -200, y: -200, sx: -200, sy: -200, trail: [], on: false };
 
 // ── p5 lifecycle ────────────────────────────
 function preload() {
-  handPose = ml5.handPose({ flipped: true });
+  faceMesh = ml5.faceMesh({ flipped: true });
 }
 
 function setup() {
@@ -68,7 +65,7 @@ function setup() {
     video = createCapture(VIDEO);
     video.size(640, 480);
     video.hide();
-    handPose.detectStart(video, r => { detectedHands = r; });
+    faceMesh.detectStart(video, r => { detectedFaces = r; });
   }).catch(function() {
     gameState = 'error';
   });
@@ -139,7 +136,7 @@ function draw() {
   }
 
   drawVideoArea();
-  updateHands();
+  updateNose();
 
   switch (gameState) {
     case 'loading': drawLoading(); break;
@@ -154,7 +151,7 @@ function draw() {
     case 'error': drawError(); break;
   }
 
-  drawHands();
+  drawNose();
 
   if (bonusFlash > 0) {
     noStroke();
@@ -238,71 +235,66 @@ function drawVideoFrame() {
   pop();
 }
 
-// ── Hand tracking (index finger tips) ───────
-function updateHands() {
-  hands[0].on = false;
-  hands[1].on = false;
+// ── Nose tracking (FaceMesh) ─────────────────
+function updateNose() {
+  nose.on = false;
 
   let sx = vr.w / 640, sy = vr.h / 480;
-  for (let i = 0; i < min(detectedHands.length, 2); i++) {
-    let hand = detectedHands[i];
-    let tip  = hand.keypoints[8];
-    if (tip && (tip.confidence === undefined || tip.confidence > 0.2)) {
-      hands[i].x  = tip.x * sx + vr.x;
-      hands[i].y  = tip.y * sy + vr.y;
-      hands[i].on = true;
+  if (detectedFaces.length > 0) {
+    let face = detectedFaces[0];
+    let tip  = face.keypoints[1]; // nose tip
+    if (tip) {
+      nose.x  = tip.x * sx + vr.x;
+      nose.y  = tip.y * sy + vr.y;
+      nose.on = true;
     }
   }
 
-  for (let h of hands) {
-    h.sx = lerp(h.sx, h.x, 0.42);
-    h.sy = lerp(h.sy, h.y, 0.42);
-    if (h.on) {
-      h.trail.push({ x: h.sx, y: h.sy });
-      if (h.trail.length > TRAIL_LEN) h.trail.shift();
-    }
+  nose.sx = lerp(nose.sx, nose.x, 0.42);
+  nose.sy = lerp(nose.sy, nose.y, 0.42);
+  if (nose.on) {
+    nose.trail.push({ x: nose.sx, y: nose.sy });
+    if (nose.trail.length > TRAIL_LEN) nose.trail.shift();
   }
 }
 
-function drawHands() {
-  for (let h of hands) {
-    if (!h.on || h.sx < -100) continue;
+function drawNose() {
+  if (!nose.on || nose.sx < -100) return;
 
-    for (let i = 0; i < h.trail.length; i++) {
-      let t  = h.trail[i];
-      let a  = map(i, 0, h.trail.length, 5, 50);
-      let sz = map(i, 0, h.trail.length, 4, catchRadius * 1.3);
-      noStroke();
-      fill(C_PINK[0], C_PINK[1], C_PINK[2], a);
-      circle(t.x, t.y, sz);
-    }
-
+  for (let i = 0; i < nose.trail.length; i++) {
+    let t  = nose.trail[i];
+    let a  = map(i, 0, nose.trail.length, 5, 50);
+    let sz = map(i, 0, nose.trail.length, 4, catchRadius * 1.3);
     noStroke();
-    for (let r = catchRadius * 2; r > 6; r -= 6) {
-      fill(C_PINK[0], C_PINK[1], C_PINK[2], map(r, catchRadius * 2, 6, 4, 35));
-      circle(h.sx, h.sy, r);
-    }
-
-    push();
-    noFill();
-    stroke(C_PINK[0], C_PINK[1], C_PINK[2], 55);
-    strokeWeight(1.5);
-    drawingContext.setLineDash([5, 7]);
-    circle(h.sx, h.sy, catchRadius * 2);
-    drawingContext.setLineDash([]);
-    pop();
-
-    let ctx = drawingContext;
-    ctx.shadowBlur  = 22;
-    ctx.shadowColor = `rgba(${C_PINK[0]},${C_PINK[1]},${C_PINK[2]},0.75)`;
-    noStroke();
-    fill(C_PINK[0], C_PINK[1], C_PINK[2], 225);
-    circle(h.sx, h.sy, 16);
-    ctx.shadowBlur = 0;
-
-    fill(255, 255, 255, 245);
-    circle(h.sx, h.sy, 6);
+    fill(C_PINK[0], C_PINK[1], C_PINK[2], a);
+    circle(t.x, t.y, sz);
   }
+
+  noStroke();
+  for (let r = catchRadius * 2; r > 6; r -= 6) {
+    fill(C_PINK[0], C_PINK[1], C_PINK[2], map(r, catchRadius * 2, 6, 4, 35));
+    circle(nose.sx, nose.sy, r);
+  }
+
+  push();
+  noFill();
+  stroke(C_PINK[0], C_PINK[1], C_PINK[2], 55);
+  strokeWeight(1.5);
+  drawingContext.setLineDash([5, 7]);
+  circle(nose.sx, nose.sy, catchRadius * 2);
+  drawingContext.setLineDash([]);
+  pop();
+
+  let ctx = drawingContext;
+  ctx.shadowBlur  = 22;
+  ctx.shadowColor = `rgba(${C_PINK[0]},${C_PINK[1]},${C_PINK[2]},0.75)`;
+  noStroke();
+  fill(C_PINK[0], C_PINK[1], C_PINK[2], 225);
+  circle(nose.sx, nose.sy, 16);
+  ctx.shadowBlur = 0;
+
+  fill(255, 255, 255, 245);
+  circle(nose.sx, nose.sy, 6);
 }
 
 // ── Emoji system ────────────────────────────
@@ -350,28 +342,24 @@ function updateEmojis() {
     e.rot += e.rotSpd;
     e.x    = constrain(e.x, vr.x + e.size * 0.5, vr.x + vr.w - e.size * 0.5);
 
-    for (let h of hands) {
-      if (!h.on) continue;
-      if (dist(h.sx, h.sy, e.x, e.y) < catchRadius + e.size * 0.4) {
-        e.caught = true;
-        if (e.type === 'alien' || e.type === 'bonus') {
-          combo++;
-          if (combo > bestCombo) bestCombo = combo;
-          let base = e.type === 'bonus' ? 25 : 10;
-          let pts  = base + floor(combo / 3) * 5;
-          score += pts;
-          scorePulse = 1;
-          let col = e.type === 'bonus' ? C_GOLD : C_LIME;
-          burstParticles(e.x, e.y, col, pts);
-          if (e.type === 'bonus') bonusFlash = 1;
-        } else {
-          combo = 0;
-          score = max(0, score - 15);
-          screenShake = 14;
-          scorePulse  = 1;
-          burstParticles(e.x, e.y, C_RED, -15);
-        }
-        break;
+    if (nose.on && dist(nose.sx, nose.sy, e.x, e.y) < catchRadius + e.size * 0.4) {
+      e.caught = true;
+      if (e.type === 'alien' || e.type === 'bonus') {
+        combo++;
+        if (combo > bestCombo) bestCombo = combo;
+        let base = e.type === 'bonus' ? 25 : 10;
+        let pts  = base + floor(combo / 3) * 5;
+        score += pts;
+        scorePulse = 1;
+        let col = e.type === 'bonus' ? C_GOLD : C_LIME;
+        burstParticles(e.x, e.y, col, pts);
+        if (e.type === 'bonus') bonusFlash = 1;
+      } else {
+        combo = 0;
+        score = max(0, score - 15);
+        screenShake = 14;
+        scorePulse  = 1;
+        burstParticles(e.x, e.y, C_RED, -15);
       }
     }
 
@@ -405,8 +393,17 @@ function drawEmojis() {
     }
 
     noStroke();
-    fill(255);
-    textFont('sans-serif');
+    if (e.type === 'alien' || e.type === 'bonus') {
+      textFont('Outfit');
+      textStyle(BOLD);
+      fill(e.type === 'bonus' ? C_GOLD[0] : C_LIME[0],
+           e.type === 'bonus' ? C_GOLD[1] : C_LIME[1],
+           e.type === 'bonus' ? C_GOLD[2] : C_LIME[2]);
+    } else {
+      textFont('sans-serif');
+      textStyle(NORMAL);
+      fill(255);
+    }
     textSize(e.size * e.scale);
     text(e.emoji, 0, 0);
 
@@ -577,7 +574,7 @@ function drawLoading() {
   textSize(min(24, vr.w * 0.04));
   fill(C_PURPLE[0], C_PURPLE[1], C_PURPLE[2]);
   let d = '.'.repeat(floor(frameCount / 20) % 4);
-  text('Loading hand tracking' + d, vr.x + vr.w / 2, vr.y + vr.h / 2);
+  text('Loading face tracking' + d, vr.x + vr.w / 2, vr.y + vr.h / 2);
   pop();
 }
 
@@ -614,7 +611,7 @@ function drawStart() {
   textFont('sans-serif');
   let decoSize = min(55, vr.w * 0.07);
   textSize(decoSize);
-  let decos = ['👾','⚡','👾','⚡','👾'];
+  let decos = ['6','7','6','7','6'];
   for (let i = 0; i < decos.length; i++) {
     let ex = cx + (i - 2) * min(75, vr.w * 0.09);
     let ey = cy - vr.h * 0.28 + sin(frameCount * 0.045 + i * 1.3) * 14;
@@ -628,21 +625,21 @@ function drawStart() {
   textSize(min(82, vr.w * 0.12));
   textStyle(BOLD);
   fill(255);
-  text('ALIEN', cx, cy - vr.h * 0.14);
+  text('NUMBER', cx, cy - vr.h * 0.14);
 
   ctx.shadowColor = `rgba(${C_GOLD[0]},${C_GOLD[1]},${C_GOLD[2]},0.6)`;
   textSize(min(90, vr.w * 0.13));
   fill(C_GOLD[0], C_GOLD[1], C_GOLD[2]);
-  text('ZAP ⚡', cx, cy - vr.h * 0.03);
+  text('ZAP', cx, cy - vr.h * 0.03);
   ctx.shadowBlur = 0;
 
   // instructions
   textSize(min(17, vr.w * 0.028));
   textStyle(NORMAL);
   fill(200, 210, 230);
-  text('Zap the aliens 👾 with your finger!', cx, cy + vr.h * 0.12);
+  text('Zap the 6s with your nose!', cx, cy + vr.h * 0.12);
   fill(170, 180, 200);
-  text('Catch ⚡ for bonus · Avoid 💣🧨🦠', cx, cy + vr.h * 0.17);
+  text('Catch 7 for bonus · Avoid 💣🧨🦠', cx, cy + vr.h * 0.17);
 
   // button
   let by = cy + vr.h * 0.3;
