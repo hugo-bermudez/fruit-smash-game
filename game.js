@@ -11,7 +11,7 @@ const TRAIL_LEN     = 10;
 const MAX_PARTICLES = 150;
 
 const ALIENS  = ['6'];
-const BADS    = ['💣', '🧨', '🦠'];
+const BADS    = ['💣', '🧨', '⚽'];
 const BONUSES = ['7'];
 
 const ALIEN_RATE = 0.58;
@@ -34,6 +34,7 @@ let bgBuffer = null;
 
 let score = 0, displayScore = 0;
 let combo = 0, bestCombo = 0;
+let hasCollected6 = false;
 let highScore = parseInt(localStorage.getItem('alienZapHigh')) || 0;
 
 let gameState   = 'loading';
@@ -320,8 +321,7 @@ function spawnEmoji() {
     wPhase: random(TWO_PI),
     wFreq:  random(0.012, 0.032),
     wAmp:   random(10, 32),
-    size: sz, rot: 0,
-    rotSpd: random(-0.022, 0.022),
+    size: sz, rot: 0, rotSpd: 0,
     opacity: 255, scale: 1, caught: false
   });
 }
@@ -339,23 +339,33 @@ function updateEmojis() {
 
     e.y   -= e.spd;
     e.x   += sin(frameCount * e.wFreq + e.wPhase) * e.wAmp * 0.013;
-    e.rot += e.rotSpd;
     e.x    = constrain(e.x, vr.x + e.size * 0.5, vr.x + vr.w - e.size * 0.5);
 
     if (nose.on && dist(nose.sx, nose.sy, e.x, e.y) < catchRadius + e.size * 0.4) {
       e.caught = true;
-      if (e.type === 'alien' || e.type === 'bonus') {
-        combo++;
-        if (combo > bestCombo) bestCombo = combo;
-        let base = e.type === 'bonus' ? 25 : 10;
-        let pts  = base + floor(combo / 3) * 5;
-        score += pts;
-        scorePulse = 1;
-        let col = e.type === 'bonus' ? C_GOLD : C_LIME;
-        burstParticles(e.x, e.y, col, pts);
-        if (e.type === 'bonus') bonusFlash = 1;
+      if (e.type === 'alien') {
+        // Collect a 6 — no points yet, just activate
+        hasCollected6 = true;
+        burstParticles(e.x, e.y, C_LIME, 0);
+      } else if (e.type === 'bonus') {
+        if (hasCollected6) {
+          // 6 then 7 — score!
+          hasCollected6 = false;
+          combo++;
+          if (combo > bestCombo) bestCombo = combo;
+          let pts = 25 + floor(combo / 3) * 5;
+          score += pts;
+          scorePulse = 1;
+          burstParticles(e.x, e.y, C_GOLD, pts);
+          bonusFlash = 1;
+        } else {
+          // 7 without a 6 — no points
+          burstParticles(e.x, e.y, C_PURPLE, 0);
+        }
       } else {
+        // Bad item
         combo = 0;
+        hasCollected6 = false;
         score = max(0, score - 15);
         screenShake = 14;
         scorePulse  = 1;
@@ -416,7 +426,7 @@ function drawEmojis() {
 // ── Particles ───────────────────────────────
 function burstParticles(x, y, col, pts) {
   if (particles.length >= MAX_PARTICLES) return;
-  let count = pts > 0 ? 30 : 14;
+  let count = pts !== 0 ? (pts > 0 ? 30 : 14) : 8;
   count = min(count, MAX_PARTICLES - particles.length - 2);
 
   for (let i = 0; i < count; i++) {
@@ -434,13 +444,15 @@ function burstParticles(x, y, col, pts) {
     size: 12, color: col, type: 'ring'
   });
 
-  particles.push({
-    x, y: y - 20, vx: 0, vy: -2.2,
-    life: 1, decay: 0.015,
-    size: min(vr.w, vr.h) * 0.04,
-    label: (pts > 0 ? '+' : '') + pts,
-    color: col, type: 'text'
-  });
+  if (pts !== 0) {
+    particles.push({
+      x, y: y - 20, vx: 0, vy: -2.2,
+      life: 1, decay: 0.015,
+      size: min(vr.w, vr.h) * 0.04,
+      label: (pts > 0 ? '+' : '') + pts,
+      color: col, type: 'text'
+    });
+  }
 }
 
 function updateParticles() {
@@ -549,9 +561,27 @@ function drawHUD() {
   textStyle(NORMAL);
   text(ceil(timeLeft) + 's', px, py + 32);
 
+  // sequence indicator
+  let iy = py + ph / 2 + 28;
+  textSize(min(22, vr.w * 0.034));
+  textStyle(BOLD);
+  if (hasCollected6) {
+    ctx.shadowBlur  = 14;
+    ctx.shadowColor = `rgba(${C_LIME[0]},${C_LIME[1]},${C_LIME[2]},0.7)`;
+    fill(C_LIME[0], C_LIME[1], C_LIME[2]);
+    let ps = 1 + sin(frameCount * 0.12) * 0.06;
+    push(); translate(px, iy); scale(ps);
+    text('6 ✓ → now catch 7!', 0, 0);
+    pop();
+    ctx.shadowBlur = 0;
+  } else {
+    fill(150, 160, 180);
+    text('catch a 6 first', px, iy);
+  }
+
   // combo
   if (combo >= 3) {
-    let cy = py + ph / 2 + 30;
+    let cy = iy + 32;
     ctx.shadowBlur  = 16;
     ctx.shadowColor = `rgba(${C_GOLD[0]},${C_GOLD[1]},${C_GOLD[2]},0.7)`;
     textSize(min(28, vr.w * 0.04));
@@ -637,9 +667,9 @@ function drawStart() {
   textSize(min(17, vr.w * 0.028));
   textStyle(NORMAL);
   fill(200, 210, 230);
-  text('Zap the 6s with your nose!', cx, cy + vr.h * 0.12);
+  text('Touch 6 then 7 with your nose to score!', cx, cy + vr.h * 0.12);
   fill(170, 180, 200);
-  text('Catch 7 for bonus · Avoid 💣🧨🦠', cx, cy + vr.h * 0.17);
+  text('Avoid 💣🧨⚽', cx, cy + vr.h * 0.17);
 
   // button
   let by = cy + vr.h * 0.3;
@@ -751,6 +781,7 @@ function handleStart(px, py) {
     displayScore = 0;
     combo        = 0;
     bestCombo    = 0;
+    hasCollected6 = false;
     timeLeft     = GAME_DURATION;
     emojis       = [];
     particles    = [];
